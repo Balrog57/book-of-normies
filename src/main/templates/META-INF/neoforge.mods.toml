@@ -1,0 +1,34 @@
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="${mod_license}"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+authors="Normies"
+description='''
+Grimoire Addams server-side : inventaire automatique des commandes du serveur dans un livre écrit vanilla.
+Compatible clients vanilla et modpacks NeoForge (ATM, etc.).
+'''
+
+[[dependencies.${mod_id}]]
+modId="neoforge"
+type="required"
+versionRange="[${neo_version},)"
+ordering="NONE"
+side="SERVER"
+
+[[dependencies.${mod_id}]]
+modId="minecraft"
+type="required"
+versionRange="${minecraft_version_range}"
+ordering="NONE"
+side="SERVER"
+
+[[dependencies.${mod_id}]]
+modId="luckperms"
+type="optional"
+versionRange="*"
+ordering="NONE"
+side="SERVER"
