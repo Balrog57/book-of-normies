@@ -1,22 +1,31 @@
 # The Book of Normies
 
-Grimoire **server-side only** style Famille Addams : liste automatiquement toutes les commandes du serveur dans un livre écrit vanilla.
+Interface NeoForge (style Famille Addams) listant **toutes les commandes du serveur**, triées par mod.
 
 | Version | Loader | JAR |
 |---------|--------|-----|
 | **1.21.1** | NeoForge | racine → `gradlew.bat build` |
-| **1.20.1** | Forge | `forge-1.20.1/` → `gradlew.bat build` |
+| **1.20.1** | Forge | `forge-1.20.1/` (livre — port GUI à venir) |
 
-Clients vanilla ou pack (ATM, etc.) : **pas besoin** d’installer ce mod.
+## Important (1.21.1)
 
-## Installation
+Le vrai menu GUI nécessite le mod **sur le client et le serveur** (NeoForge seulement, aucune autre dépendance).  
+Sur ATM : ajoute le JAR au pack client + serveur.
 
-1. Prendre le JAR adapté à ton loader / version MC
-2. Le placer dans `mods/` du **serveur**
-3. Au premier démarrage : `config/book_of_normies.json`
-4. En jeu : `/bookn` (OP ou rôles LuckPerms)
+## Usage
+
+```
+/bookn
+```
+
+- Colonne gauche : mods (minecraft → priorités config → alpha)
+- Colonne droite : commandes du mod sélectionné
+- Params : bouton cycle `[option ⟳]` ou champ libre `[param]`
+- Confirmation avant exécution si paramètres
 
 ## Config
+
+`config/book_of_normies.json` (serveur) :
 
 ```json
 {
@@ -30,10 +39,7 @@ Clients vanilla ou pack (ATM, etc.) : **pas besoin** d’installer ce mod.
 ## Build
 
 ```bat
-rem NeoForge 1.21.1
-gradlew.bat build
-
-rem Forge 1.20.1
-cd forge-1.20.1
 gradlew.bat build
 ```
+
+JAR : `build/libs/book_of_normies-neoforge-1.21.1-1.0.2.jar`

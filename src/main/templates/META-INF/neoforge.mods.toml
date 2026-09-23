@@ -8,8 +8,8 @@ version="${mod_version}"
 displayName="${mod_name}"
 authors="Normies"
 description='''
-Grimoire Addams server-side : inventaire automatique des commandes du serveur dans un livre écrit vanilla.
-Compatible clients vanilla et modpacks NeoForge (ATM, etc.).
+Grimoire Addams NeoForge : interface listant toutes les commandes du serveur, triees par mod.
+Requis cote client ET serveur (NeoForge uniquement, aucune autre lib).
 '''
 
 [[dependencies.${mod_id}]]
@@ -17,14 +17,14 @@ modId="neoforge"
 type="required"
 versionRange="${neo_version_range}"
 ordering="NONE"
-side="SERVER"
+side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="minecraft"
 type="required"
 versionRange="${minecraft_version_range}"
 ordering="NONE"
-side="SERVER"
+side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="luckperms"
