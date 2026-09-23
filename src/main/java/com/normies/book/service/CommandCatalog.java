@@ -6,10 +6,13 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.server.MinecraftServer;
+import net.neoforged.fml.ModList;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 /** Serializable command catalog sent to the client GUI. */
 public final class CommandCatalog {
@@ -41,10 +44,11 @@ public final class CommandCatalog {
         }
     }
 
-    public record ModSection(String modId, List<CommandEntry> commands) {
+    public record ModSection(String modId, String displayName, List<CommandEntry> commands) {
         public static final StreamCodec<RegistryFriendlyByteBuf, ModSection> STREAM_CODEC =
                 StreamCodec.composite(
                         ByteBufCodecs.STRING_UTF8, ModSection::modId,
+                        ByteBufCodecs.STRING_UTF8, ModSection::displayName,
                         ByteBufCodecs.collection(ArrayList::new, CommandEntry.STREAM_CODEC), ModSection::commands,
                         ModSection::new
                 );
@@ -59,9 +63,33 @@ public final class CommandCatalog {
                 commands.add(CommandEntry.fromNode(node));
             }
             if (!commands.isEmpty()) {
-                sections.add(new ModSection(entry.getKey(), commands));
+                sections.add(new ModSection(entry.getKey(), resolveDisplayName(entry.getKey()), commands));
             }
         }
         return sections;
+    }
+
+    private static String resolveDisplayName(String modId) {
+        if ("minecraft".equals(modId)) {
+            return "Minecraft";
+        }
+        if ("unknown".equals(modId)) {
+            return "Autres";
+        }
+        Optional<? extends net.neoforged.fml.ModContainer> container = ModList.get().getModContainerById(modId);
+        if (container.isPresent()) {
+            String name = container.get().getModInfo().getDisplayName();
+            if (name != null && !name.isBlank()) {
+                return name;
+            }
+        }
+        return modId;
+    }
+
+    public static String headerLabel(ModSection section) {
+        if ("minecraft".equals(section.modId())) {
+            return "THE BOOK OF NORMIES";
+        }
+        return section.displayName().toUpperCase(Locale.ROOT);
     }
 }
