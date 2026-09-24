@@ -17,6 +17,7 @@ public class BookOfNormiesMod {
 
     public BookOfNormiesMod(IEventBus modEventBus) {
         ModConfig.load();
+        ModSounds.SOUND_EVENTS.register(modEventBus);
         modEventBus.addListener(ModNetwork::register);
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
         LOGGER.info("The Book of Normies loaded (NeoForge GUI).");

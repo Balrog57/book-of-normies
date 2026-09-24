@@ -42,4 +42,10 @@ Sur ATM : ajoute le JAR au pack client + serveur.
 gradlew.bat build
 ```
 
-JAR : `build/libs/book_of_normies-neoforge-1.21.1-1.0.2.jar`
+JAR : `build/libs/book_of_normies-neoforge-1.21.1-1.0.4.jar`
+
+### UI grimoire (1.0.4+)
+
+- Livre ouvert (parchemin + reliure)
+- Onglets de mods animés + son de feuilletage
+- Menu déroulant des commandes sur la page droite

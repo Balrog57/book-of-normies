@@ -1,0 +1,13 @@
+{
+  "tab_turn": {
+    "subtitle": "book_of_normies.subtitle.tab_turn",
+    "sounds": [
+      {
+        "name": "minecraft:item.book.page_turn",
+        "type": "event",
+        "volume": 1.0,
+        "pitch": 1.0
+      }
+    ]
+  }
+}

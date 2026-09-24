@@ -1,134 +1,150 @@
 package com.normies.book.client;
 
+import com.normies.book.BookOfNormiesMod;
 import com.normies.book.network.RunCommandPayload;
 import com.normies.book.service.CommandCatalog;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.components.ObjectSelectionList;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.Mth;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.List;
 
 /**
- * Victorian / Addams Family command grimoire UI.
+ * Open Addams Family grimoire: textured pages, animated mod tabs, gothic command dropdown.
  */
 public class BookOfNormiesScreen extends Screen {
-    private static final int BG = 0xFF0A0708;
-    private static final int PANEL = 0xFF161012;
-    private static final int PANEL_INNER = 0xFF1E1518;
-    private static final int BORDEAUX = 0xFF5C101C;
-    private static final int BORDEAUX_DEEP = 0xFF3A0A12;
+    private static final ResourceLocation PAGE_TEX =
+            ResourceLocation.fromNamespaceAndPath(BookOfNormiesMod.MOD_ID, "textures/gui/grimoire_page.png");
+    private static final ResourceLocation BIND_TEX =
+            ResourceLocation.fromNamespaceAndPath(BookOfNormiesMod.MOD_ID, "textures/gui/grimoire_binding.png");
+
+    private static final int BG = 0xFF070405;
     private static final int GOLD = 0xFFC4A35A;
     private static final int GOLD_DIM = 0xFF8A7340;
-    private static final int SLATE = 0xFF9A8A90;
-    private static final int INK = 0xFFEDE4E0;
-    private static final int ROW = 0xFF24181C;
-    private static final int ROW_HOVER = 0xFF3A2228;
-    private static final int ROW_SEL = 0xFF4A1520;
+    private static final int BORDEAUX = 0xFF4A0E17;
+    private static final int INK = 0xFF2A1A18;
+    private static final int SLATE = 0xFF6E5B4B;
+    private static final int ANIM_TICKS = 8;
 
     private final List<CommandCatalog.ModSection> mods;
 
-    private ModList modList;
-    private CommandList commandList;
+    private GrimoireTabBar tabBar;
+    private GothicDropdown dropdown;
     private EditBox freeInput;
     private Button cycleButton;
     private Button confirmButton;
     private Button closeButton;
 
-    private CommandCatalog.ModSection selectedMod;
+    private int selectedModIndex;
     private CommandCatalog.CommandEntry selectedCommand;
     private int choiceIndex;
     private String pendingPreview = "";
     private boolean confirmMode;
 
+    private float animProgress = 1f;
+    private int animTicksLeft;
+    private int bookLeft;
+    private int bookTop;
+    private int bookW;
+    private int bookH;
+    private int pageW;
+    private int gutter;
+
     public BookOfNormiesScreen(List<CommandCatalog.ModSection> mods) {
         super(Component.literal("The Book of Normies"));
         this.mods = mods == null ? List.of() : mods;
-        if (!this.mods.isEmpty()) {
-            this.selectedMod = this.mods.getFirst();
+        this.selectedModIndex = 0;
+    }
+
+    private CommandCatalog.ModSection currentMod() {
+        if (mods.isEmpty() || selectedModIndex < 0 || selectedModIndex >= mods.size()) {
+            return null;
         }
+        return mods.get(selectedModIndex);
     }
 
     @Override
     protected void init() {
-        int outer = 16;
-        int headerH = 52;
-        int footerH = 64;
-        int gap = 10;
-        int leftW = Math.max(150, this.width / 3);
+        this.bookW = Mth.clamp((int) (this.width * 0.82f), 320, 520);
+        this.bookH = Mth.clamp((int) (this.height * 0.72f), 220, 320);
+        this.bookLeft = (this.width - this.bookW) / 2;
+        this.bookTop = (this.height - this.bookH) / 2 + 8;
+        this.gutter = 18;
+        this.pageW = (this.bookW - this.gutter) / 2;
 
-        int listTop = outer + headerH;
-        int listH = Math.max(80, this.height - outer - footerH - listTop);
-        int leftX = outer + 8;
-        int rightX = leftX + leftW + gap;
-        int rightW = this.width - rightX - outer - 8;
+        int tabY = this.bookTop - 26;
+        this.tabBar = new GrimoireTabBar(this.bookLeft + 12, tabY, this.bookW - 24, this.mods,
+                this.selectedModIndex, this::onTabSelected);
+        this.addRenderableWidget(this.tabBar);
 
-        this.modList = new ModList(leftW, listH);
-        this.modList.setX(leftX);
-        this.modList.setY(listTop);
-        this.addRenderableWidget(this.modList);
+        int rightX = this.bookLeft + this.pageW + this.gutter + 16;
+        int rightInnerW = this.pageW - 36;
 
-        this.commandList = new CommandList(rightW, listH);
-        this.commandList.setX(rightX);
-        this.commandList.setY(listTop);
-        this.addRenderableWidget(this.commandList);
+        this.dropdown = new GothicDropdown(rightX, this.bookTop + 56, rightInnerW);
+        this.dropdown.setOnSelect(this::onCommandSelected);
+        this.addRenderableWidget(this.dropdown);
 
-        int bottomY = this.height - outer - 36;
-        this.freeInput = new EditBox(this.font, rightX, bottomY, Math.max(100, rightW - 230), 20,
+        this.freeInput = new EditBox(this.font, rightX, this.bookTop + 96, rightInnerW, 20,
                 Component.literal("param"));
         this.freeInput.setMaxLength(256);
         this.freeInput.setTextColor(INK);
-        this.freeInput.setTextColorUneditable(SLATE);
         this.freeInput.setVisible(false);
         this.addRenderableWidget(this.freeInput);
 
-        this.cycleButton = Button.builder(Component.literal("⚜ ⟳ ⚜"), b -> cycleChoice())
-                .bounds(rightX, bottomY, 100, 20)
+        this.cycleButton = Button.builder(Component.literal("[ option ⟳ ]"), b -> cycleChoice())
+                .bounds(rightX, this.bookTop + 96, Math.min(160, rightInnerW), 20)
                 .build();
         this.cycleButton.visible = false;
         this.addRenderableWidget(this.cycleButton);
 
+        int btnY = this.bookTop + this.bookH - 36;
         this.confirmButton = Button.builder(Component.literal("✔ Invoquer"), b -> onConfirm())
-                .bounds(this.width - outer - 210, bottomY, 100, 20)
+                .bounds(rightX, btnY, 100, 20)
                 .build();
         this.addRenderableWidget(this.confirmButton);
 
         this.closeButton = Button.builder(Component.literal("✖ Clore"), b -> onClose())
-                .bounds(this.width - outer - 100, bottomY, 90, 20)
+                .bounds(rightX + rightInnerW - 90, btnY, 90, 20)
                 .build();
         this.addRenderableWidget(this.closeButton);
 
-        refreshModEntries();
-        refreshCommandEntries();
-        updateParamWidgets();
-    }
-
-    private void refreshModEntries() {
-        this.modList.reload(this.mods, this.selectedMod);
-    }
-
-    private void refreshCommandEntries() {
-        this.selectedCommand = null;
-        this.choiceIndex = 0;
-        this.confirmMode = false;
-        this.commandList.reload(this.selectedMod == null ? List.of() : this.selectedMod.commands());
+        reloadCommandsForMod();
         updateParamWidgets();
         updatePreview();
     }
 
-    private void selectMod(CommandCatalog.ModSection section) {
-        this.selectedMod = section;
-        refreshCommandEntries();
+    private void onTabSelected(int index) {
+        if (index == this.selectedModIndex) {
+            return;
+        }
+        this.selectedModIndex = index;
+        this.animTicksLeft = ANIM_TICKS;
+        this.animProgress = 0f;
+        this.dropdown.setLocked(true);
+        this.dropdown.collapse();
+        this.confirmMode = false;
+        reloadCommandsForMod();
+        updateParamWidgets();
+        updatePreview();
     }
 
-    private void selectCommand(CommandCatalog.CommandEntry command) {
-        this.selectedCommand = command;
+    private void reloadCommandsForMod() {
+        CommandCatalog.ModSection mod = currentMod();
+        this.dropdown.setEntries(mod == null ? List.of() : mod.commands());
+        this.choiceIndex = 0;
+        this.selectedCommand = this.dropdown.getSelected();
+    }
+
+    private void onCommandSelected(CommandCatalog.CommandEntry entry) {
+        this.selectedCommand = entry;
         this.choiceIndex = 0;
         this.confirmMode = false;
-        if (command != null && command.kind() == CommandCatalog.CommandEntry.KIND_FREEFORM) {
+        if (entry != null && entry.kind() == CommandCatalog.CommandEntry.KIND_FREEFORM) {
             this.freeInput.setValue("");
         }
         updateParamWidgets();
@@ -145,8 +161,10 @@ public class BookOfNormiesScreen extends Screen {
     }
 
     private void updateParamWidgets() {
-        boolean has = this.selectedCommand != null;
+        boolean animating = this.animTicksLeft > 0;
+        boolean has = this.selectedCommand != null && !animating;
         byte kind = has ? this.selectedCommand.kind() : CommandCatalog.CommandEntry.KIND_NONE;
+
         this.freeInput.setVisible(has && kind == CommandCatalog.CommandEntry.KIND_FREEFORM && !this.confirmMode);
         this.cycleButton.visible = has && kind == CommandCatalog.CommandEntry.KIND_CHOICE && !this.confirmMode;
         if (this.cycleButton.visible) {
@@ -155,7 +173,9 @@ public class BookOfNormiesScreen extends Screen {
                     : this.selectedCommand.choices().get(this.choiceIndex % this.selectedCommand.choices().size());
             this.cycleButton.setMessage(Component.literal("[ " + choice + " ⟳ ]"));
         }
+        this.confirmButton.active = has;
         this.confirmButton.setMessage(Component.literal(this.confirmMode ? "✔ Confirmer" : "✔ Invoquer"));
+        this.dropdown.setLocked(animating);
     }
 
     private void updatePreview() {
@@ -188,7 +208,7 @@ public class BookOfNormiesScreen extends Screen {
 
     private void onConfirm() {
         updatePreview();
-        if (this.pendingPreview.isBlank()) {
+        if (this.pendingPreview.isBlank() || this.animTicksLeft > 0) {
             return;
         }
         if (this.selectedCommand != null
@@ -209,224 +229,156 @@ public class BookOfNormiesScreen extends Screen {
     @Override
     public void tick() {
         super.tick();
+        if (this.animTicksLeft > 0) {
+            this.animTicksLeft--;
+            this.animProgress = 1f - (this.animTicksLeft / (float) ANIM_TICKS);
+            this.animProgress = easeOutCubic(this.animProgress);
+            if (this.animTicksLeft == 0) {
+                this.animProgress = 1f;
+                updateParamWidgets();
+            }
+        }
         if (this.freeInput.isVisible()) {
             updatePreview();
         }
     }
 
+    private static float easeOutCubic(float t) {
+        float u = 1f - t;
+        return 1f - u * u * u;
+    }
+
     @Override
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         graphics.fill(0, 0, this.width, this.height, BG);
-
-        // Outer ornate frame
-        int o = 10;
-        graphics.fill(o, o, this.width - o, this.height - o, BORDEAUX_DEEP);
-        graphics.fill(o + 2, o + 2, this.width - o - 2, this.height - o - 2, PANEL);
-        graphics.fill(o + 5, o + 5, this.width - o - 5, this.height - o - 5, PANEL_INNER);
-
-        // Gold corner marks
-        drawCorner(graphics, o + 6, o + 6, true, true);
-        drawCorner(graphics, this.width - o - 6, o + 6, false, true);
-        drawCorner(graphics, o + 6, this.height - o - 6, true, false);
-        drawCorner(graphics, this.width - o - 6, this.height - o - 6, false, false);
-
-        // Top blood rule
-        graphics.fill(o + 20, o + 8, this.width - o - 20, o + 10, BORDEAUX);
-        graphics.fill(o + 20, this.height - o - 10, this.width - o - 20, this.height - o - 8, BORDEAUX);
-
-        // Subtle vertical motif
-        for (int y = o + 40; y < this.height - o - 40; y += 28) {
-            graphics.drawString(this.font, "❖", o + 14, y, BORDEAUX_DEEP, false);
-            graphics.drawString(this.font, "❖", this.width - o - 22, y, BORDEAUX_DEEP, false);
-        }
-    }
-
-    private void drawCorner(GuiGraphics graphics, int x, int y, boolean left, boolean top) {
-        int dx = left ? 1 : -1;
-        int dy = top ? 1 : -1;
-        graphics.fill(x - (left ? 0 : 18), y - (top ? 0 : 2), x + (left ? 18 : 0), y + (top ? 2 : 0), GOLD_DIM);
-        graphics.fill(x - (left ? 0 : 2), y - (top ? 0 : 18), x + (left ? 2 : 0), y + (top ? 18 : 0), GOLD_DIM);
-        graphics.drawString(this.font, "⚜", x - (left ? 0 : 8) + dx, y - (top ? 0 : 8) + dy, GOLD, false);
+        // Vignette
+        graphics.fill(0, 0, this.width, 24, 0xAA000000);
+        graphics.fill(0, this.height - 24, this.width, this.height, 0xAA000000);
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
 
-        graphics.drawCenteredString(this.font, "⚜  THE BOOK OF NORMIES  ⚜", this.width / 2, 20, GOLD);
-        graphics.drawCenteredString(this.font, "— Grimoire de la Famille Addams —", this.width / 2, 32, SLATE);
+        graphics.drawCenteredString(this.font, "⚜  THE BOOK OF NORMIES  ⚜", this.width / 2, 10, GOLD);
+        graphics.drawCenteredString(this.font, "— Grimoire de la Famille Addams —", this.width / 2, 22, GOLD_DIM);
 
-        int count = this.mods.size();
-        int cmds = this.mods.stream().mapToInt(m -> m.commands().size()).sum();
-        graphics.drawCenteredString(this.font,
-                count + " registres  ·  " + cmds + " rituels",
-                this.width / 2, 44, GOLD_DIM);
+        drawBook(graphics);
 
-        graphics.drawString(this.font, "✦ REGISTRES", this.modList.getX() + 2, this.modList.getY() - 12, BORDEAUX, false);
-        String rightTitle = this.selectedMod == null
-                ? "✦ RITUELS"
-                : ("✦ " + CommandCatalog.headerLabel(this.selectedMod));
-        graphics.drawString(this.font, rightTitle, this.commandList.getX() + 2, this.commandList.getY() - 12, BORDEAUX, false);
+        // Page-turn fade overlay on right page during animation
+        if (this.animProgress < 1f) {
+            int alpha = (int) ((1f - this.animProgress) * 180);
+            int color = (alpha << 24) | 0xE8D9C0;
+            int rx = this.bookLeft + this.pageW + this.gutter;
+            graphics.fill(rx, this.bookTop, this.bookLeft + this.bookW, this.bookTop + this.bookH, color);
+            float slide = (1f - this.animProgress) * 24f;
+            graphics.pose().pushPose();
+            graphics.pose().translate(slide, 0, 0);
+            // decorative sweep line
+            graphics.fill(rx + 8, this.bookTop + 40, rx + 12, this.bookTop + this.bookH - 40, BORDEAUX);
+            graphics.pose().popPose();
+        }
 
-        // Preview plaque
-        int px = 26;
-        int py = this.height - 58;
-        graphics.fill(px, py - 2, this.width - 230, py + 12, ROW);
+        drawLeftPageText(graphics);
+        drawRightPageChrome(graphics);
+    }
+
+    private void drawBook(GuiGraphics graphics) {
+        int left = this.bookLeft;
+        int top = this.bookTop;
+        int mid = left + this.pageW;
+
+        // Shadow
+        graphics.fill(left + 6, top + 8, left + this.bookW + 6, top + this.bookH + 8, 0x66000000);
+
+        // Left page
+        graphics.blit(PAGE_TEX, left, top, 0, 0, this.pageW, this.bookH, 256, 256);
+        // Right page
+        graphics.blit(PAGE_TEX, mid + this.gutter, top, 0, 0, this.pageW, this.bookH, 256, 256);
+        // Binding
+        graphics.blit(BIND_TEX, mid - 4, top - 4, 0, 0, this.gutter + 8, this.bookH + 8, 256, 256);
+
+        // Gold frame
+        graphics.fill(left, top, left + this.bookW, top + 2, GOLD_DIM);
+        graphics.fill(left, top + this.bookH - 2, left + this.bookW, top + this.bookH, GOLD_DIM);
+        graphics.fill(left, top, left + 2, top + this.bookH, GOLD_DIM);
+        graphics.fill(left + this.bookW - 2, top, left + this.bookW, top + this.bookH, GOLD_DIM);
+
+        // Corner fleurs
+        graphics.drawString(this.font, "⚜", left + 6, top + 4, BORDEAUX, false);
+        graphics.drawString(this.font, "⚜", left + this.bookW - 14, top + 4, BORDEAUX, false);
+        graphics.drawString(this.font, "⚜", left + 6, top + this.bookH - 14, BORDEAUX, false);
+        graphics.drawString(this.font, "⚜", left + this.bookW - 14, top + this.bookH - 14, BORDEAUX, false);
+    }
+
+    private void drawLeftPageText(GuiGraphics graphics) {
+        CommandCatalog.ModSection mod = currentMod();
+        int lx = this.bookLeft + 18;
+        int ly = this.bookTop + 28;
+
+        graphics.drawString(this.font, "❖ REGISTRE ❖", lx, ly, BORDEAUX, false);
+        graphics.fill(lx, ly + 12, lx + this.pageW - 36, ly + 13, GOLD_DIM);
+
+        String title = mod == null ? "—" : CommandCatalog.headerLabel(mod);
+        // Wrap-ish single line truncate
+        if (this.font.width(title) > this.pageW - 40) {
+            title = this.font.plainSubstrByWidth(title, this.pageW - 48) + "…";
+        }
+        graphics.drawString(this.font, title, lx, ly + 24, INK, false);
+
+        String display = mod == null ? "" : mod.displayName();
+        graphics.drawString(this.font, display, lx, ly + 40, SLATE, false);
+
+        int count = mod == null ? 0 : mod.commands().size();
+        graphics.drawString(this.font, count + " rituel" + (count == 1 ? "" : "s"), lx, ly + 58, BORDEAUX, false);
+
+        graphics.drawString(this.font, "─────────────", lx, ly + 78, GOLD_DIM, false);
+        graphics.drawString(this.font, "« Choses funèbres", lx, ly + 96, SLATE, false);
+        graphics.drawString(this.font, "et commandes", lx, ly + 108, SLATE, false);
+        graphics.drawString(this.font, "occultes. »", lx, ly + 120, SLATE, false);
+
+        graphics.drawCenteredString(this.font, "⚜ ❖ ⚜",
+                this.bookLeft + this.pageW / 2, this.bookTop + this.bookH - 28, GOLD);
+
+        int totalMods = this.mods.size();
+        int totalCmds = this.mods.stream().mapToInt(m -> m.commands().size()).sum();
+        graphics.drawString(this.font, totalMods + " registres · " + totalCmds + " rituels",
+                lx, this.bookTop + this.bookH - 44, GOLD_DIM, false);
+    }
+
+    private void drawRightPageChrome(GuiGraphics graphics) {
+        int rx = this.bookLeft + this.pageW + this.gutter + 16;
+        int ry = this.bookTop + 28;
+
+        graphics.drawString(this.font, "✦ INVOCATION ✦", rx, ry, BORDEAUX, false);
+        graphics.fill(rx, ry + 12, rx + this.pageW - 36, ry + 13, GOLD_DIM);
+        graphics.drawString(this.font, "Rituel", rx, ry + 18, SLATE, false);
+
         String preview = this.pendingPreview.isBlank()
-                ? "Choisissez un rituel dans les registres…"
-                : (this.confirmMode ? ("Confirmer l'invocation : /" + this.pendingPreview)
-                : ("Invocation : /" + this.pendingPreview));
-        graphics.drawString(this.font, preview, px + 6, py, this.confirmMode ? GOLD : INK, false);
+                ? "Sélectionnez un rituel dans le menu…"
+                : (this.confirmMode ? ("Confirmer : /" + this.pendingPreview)
+                : ("/" + this.pendingPreview));
+        int py = this.bookTop + 128;
+        graphics.fill(rx - 2, py, rx + this.pageW - 34, py + 28, 0x33C4A35A);
+        graphics.drawWordWrap(this.font, Component.literal(preview), rx, py + 6, this.pageW - 44, INK);
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // Let dropdown consume first when expanded
+        if (this.dropdown != null && this.dropdown.isExpanded()) {
+            if (this.dropdown.mouseClicked(mouseX, mouseY, button)) {
+                return true;
+            }
+            if (!this.dropdown.isMouseOverExpanded(mouseX, mouseY)) {
+                this.dropdown.collapse();
+            }
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
     public boolean isPauseScreen() {
         return false;
-    }
-
-    private class ModList extends ObjectSelectionList<ModList.Entry> {
-        ModList(int width, int height) {
-            super(BookOfNormiesScreen.this.minecraft, width, height, 0, 20);
-        }
-
-        void reload(List<CommandCatalog.ModSection> sections, CommandCatalog.ModSection selected) {
-            this.clearEntries();
-            Entry selectedEntry = null;
-            for (CommandCatalog.ModSection section : sections) {
-                Entry entry = new Entry(section);
-                this.addEntry(entry);
-                if (section == selected) {
-                    selectedEntry = entry;
-                }
-            }
-            if (selectedEntry != null) {
-                this.setSelected(selectedEntry);
-            }
-        }
-
-        @Override
-        public int getRowWidth() {
-            return this.width - 10;
-        }
-
-        @Override
-        protected int getScrollbarPosition() {
-            return this.getX() + this.width - 6;
-        }
-
-        @Override
-        protected void renderListBackground(GuiGraphics graphics) {
-            graphics.fill(this.getX(), this.getY(), this.getX() + this.width, this.getY() + this.getHeight(), ROW);
-            graphics.fill(this.getX(), this.getY(), this.getX() + this.width, this.getY() + 1, GOLD_DIM);
-            graphics.fill(this.getX(), this.getY() + this.getHeight() - 1, this.getX() + this.width, this.getY() + this.getHeight(), GOLD_DIM);
-        }
-
-        private class Entry extends ObjectSelectionList.Entry<Entry> {
-            private final CommandCatalog.ModSection section;
-
-            Entry(CommandCatalog.ModSection section) {
-                this.section = section;
-            }
-
-            @Override
-            public void render(GuiGraphics graphics, int index, int top, int left, int width, int height,
-                               int mouseX, int mouseY, boolean hovering, float partialTick) {
-                boolean selected = ModList.this.getSelected() == this;
-                int bg = selected ? ROW_SEL : (hovering ? ROW_HOVER : 0);
-                if (bg != 0) {
-                    graphics.fill(left, top, left + width, top + height, bg);
-                }
-                int color = selected ? GOLD : (hovering ? INK : SLATE);
-                String mark = "minecraft".equals(this.section.modId()) ? "❖ " : "✦ ";
-                String label = mark + this.section.displayName();
-                graphics.drawString(BookOfNormiesScreen.this.font, label, left + 6, top + 6, color, false);
-                if (selected) {
-                    graphics.fill(left, top, left + 3, top + height, BORDEAUX);
-                }
-            }
-
-            @Override
-            public boolean mouseClicked(double mouseX, double mouseY, int button) {
-                ModList.this.setSelected(this);
-                BookOfNormiesScreen.this.selectMod(this.section);
-                return true;
-            }
-
-            @Override
-            public Component getNarration() {
-                return Component.literal(this.section.displayName());
-            }
-        }
-    }
-
-    private class CommandList extends ObjectSelectionList<CommandList.Entry> {
-        CommandList(int width, int height) {
-            super(BookOfNormiesScreen.this.minecraft, width, height, 0, 20);
-        }
-
-        void reload(List<CommandCatalog.CommandEntry> commands) {
-            this.clearEntries();
-            for (CommandCatalog.CommandEntry command : commands) {
-                this.addEntry(new Entry(command));
-            }
-        }
-
-        @Override
-        public int getRowWidth() {
-            return this.width - 10;
-        }
-
-        @Override
-        protected int getScrollbarPosition() {
-            return this.getX() + this.width - 6;
-        }
-
-        @Override
-        protected void renderListBackground(GuiGraphics graphics) {
-            graphics.fill(this.getX(), this.getY(), this.getX() + this.width, this.getY() + this.getHeight(), ROW);
-            graphics.fill(this.getX(), this.getY(), this.getX() + this.width, this.getY() + 1, GOLD_DIM);
-            graphics.fill(this.getX(), this.getY() + this.getHeight() - 1, this.getX() + this.width, this.getY() + this.getHeight(), GOLD_DIM);
-        }
-
-        private class Entry extends ObjectSelectionList.Entry<Entry> {
-            private final CommandCatalog.CommandEntry command;
-
-            Entry(CommandCatalog.CommandEntry command) {
-                this.command = command;
-            }
-
-            @Override
-            public void render(GuiGraphics graphics, int index, int top, int left, int width, int height,
-                               int mouseX, int mouseY, boolean hovering, float partialTick) {
-                boolean selected = CommandList.this.getSelected() == this;
-                int bg = selected ? ROW_SEL : (hovering ? ROW_HOVER : 0);
-                if (bg != 0) {
-                    graphics.fill(left, top, left + width, top + height, bg);
-                }
-                int color = selected ? GOLD : (hovering ? INK : SLATE);
-                String suffix = switch (this.command.kind()) {
-                    case CommandCatalog.CommandEntry.KIND_CHOICE -> "  〔↻〕";
-                    case CommandCatalog.CommandEntry.KIND_FREEFORM -> "  〔" + this.command.argName() + "〕";
-                    default -> "";
-                };
-                graphics.drawString(BookOfNormiesScreen.this.font, "/" + this.command.name() + suffix,
-                        left + 8, top + 6, color, false);
-                if (selected || hovering) {
-                    graphics.fill(left, top, left + 3, top + height, BORDEAUX);
-                }
-            }
-
-            @Override
-            public boolean mouseClicked(double mouseX, double mouseY, int button) {
-                CommandList.this.setSelected(this);
-                BookOfNormiesScreen.this.selectCommand(this.command);
-                return true;
-            }
-
-            @Override
-            public Component getNarration() {
-                return Component.literal("/" + this.command.name());
-            }
-        }
     }
 }
